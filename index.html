@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>مشغل تلاوة القرآن</title>
+<style>
+  body {
+    font-family: 'Tahoma', sans-serif;
+    background: #1a1a1a;
+    color: white;
+    margin: 0;
+    padding: 0;
+    text-align: center;
+  }
+  header {
+    background: #009688;
+    padding: 15px;
+    font-size: 22px;
+    font-weight: bold;
+  }
+  main {
+    padding: 20px;
+  }
+  select, button {
+    padding: 10px;
+    margin: 5px;
+    font-size: 16px;
+    border-radius: 5px;
+    border: none;
+  }
+  select {
+    background: #222;
+    color: white;
+  }
+  button {
+    background: #009688;
+    color: white;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #00796B;
+  }
+  #ayah {
+    font-size: 26px;
+    margin: 20px 0;
+    line-height: 1.8;
+    color: #ffeb3b;
+  }
+  #translation {
+    font-size: 18px;
+    color: #ccc;
+    margin-bottom: 15px;
+  }
+  #tafsir {
+    font-size: 16px;
+    color: #aaa;
+    margin-bottom: 20px;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  audio {
+    width: 100%;
+    max-width: 600px;
+    margin: 10px auto;
+    display: block;
+  }
+  #progress {
+    margin: 15px 0;
+    color: #ccc;
+  }
+</style>
+</head>
+<body>
+
+<header>📖 مشغل تلاوة القرآن الكريم</header>
+
+<main>
+  <div>
+    <label>السورة:</label>
+    <select id="surahSelect"></select>
+    <label>القارئ:</label>
+    <select id="reciterSelect"></select>
+    <label>السرعة:</label>
+    <select id="speedSelect">
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+      <option value="1.5">1.5x</option>
+      <option value="2">2x</option>
+    </select>
+  </div>
+
+  <div id="ayah">جاري التحميل...</div>
+  <div id="translation"></div>
+  <div id="tafsir"></div>
+
+  <audio id="player" controls></audio>
+  <div id="progress"></div>
+
+  <div>
+    <button onclick="prevAyah()">⬅️ السابقة</button>
+    <button onclick="togglePlay()">⏯ تشغيل/إيقاف</button>
+    <button onclick="nextAyah()">➡️ التالية</button>
+  </div>
+</main>
+
+<script>
+let surah = localStorage.getItem("lastSurah") ? parseInt(localStorage.getItem("lastSurah")) : 1;
+let ayah = localStorage.getItem("lastAyah") ? parseInt(localStorage.getItem("lastAyah")) : 1;
+let reciterId = localStorage.getItem("lastReciter") ? parseInt(localStorage.getItem("lastReciter")) : 7;
+let totalAyahs = 7;
+
+async function loadSurahs() {
+  const res = await fetch("https://api.quran.com:443/v4/chapters");
+  const data = await res.json();
+  const select = document.getElementById("surahSelect");
+  data.chapters.forEach(ch => {
+    const opt = document.createElement("option");
+    opt.value = ch.id;
+    opt.textContent = `${ch.id} - ${ch.name_arabic}`;
+    select.appendChild(opt);
+  });
+  select.value = surah;
+}
+
+function loadReciters() {
+  const reciters = [
+    {id: 7, name: "مشاري العفاسي"},
+    {id: 1, name: "عبد الباسط عبد الصمد"},
+    {id: 2, name: "عبد الرحمن السديس"},
+    {id: 3, name: "سعود الشريم"}
+  ];
+  const select = document.getElementById("reciterSelect");
+  reciters.forEach(r => {
+    const opt = document.createElement("option");
+    opt.value = r.id;
+    opt.textContent = r.name;
+    select.appendChild(opt);
+  });
+  select.value = reciterId;
+}
+
+async function loadAyah() {
+  localStorage.setItem("lastSurah", surah);
+  localStorage.setItem("lastAyah", ayah);
+  localStorage.setItem("lastReciter", reciterId);
+
+  const res = await fetch(
+    `https://api.quran.com:443/v4/verses/by_key/${surah}:${ayah}?language=ar&fields=text_uthmani,translations,tafsirs&translations=131&tafsirs=169`
+  );
+  const data = await res.json();
+
+  document.getElementById("ayah").textContent = data.verse.text_uthmani;
+  document.getElementById("translation").textContent = "🔹 ترجمة: " + (data.verse.translations[0]?.text || "لا توجد ترجمة");
+  document.getElementById("tafsir").textContent = "📚 تفسير: " + (data.verse.tafsirs[0]?.text || "لا يوجد تفسير");
+
+  const audioRes = await fetch(
+    `https://api.quran.com:443/v4/recitations/${reciterId}/by_ayah/${surah}:${ayah}`
+  );
+  const audioData = await audioRes.json();
+  const player = document.getElementById("player");
+  player.src = audioData.audio_files[0].audio_url;
+  player.playbackRate = parseFloat(document.getElementById("speedSelect").value);
+  player.play();
+
+  document.getElementById("progress").textContent = `الآية ${ayah} من ${totalAyahs}`;
+  
+  player.onended = () => {
+    if (ayah < totalAyahs) {
+      ayah++;
+      loadAyah();
+    }
+  };
+}
+
+function nextAyah() {
+  if (ayah < totalAyahs) {
+    ayah++;
+    loadAyah();
+  }
+}
+
+function prevAyah() {
+  if (ayah > 1) {
+    ayah--;
+    loadAyah();
+  }
+}
+
+function togglePlay() {
+  const player = document.getElementById("player");
+  if (player.paused) player.play(); else player.pause();
+}
+
+document.getElementById("surahSelect").addEventListener("change", e => {
+  surah = parseInt(e.target.value);
+  ayah = 1;
+  fetch(`https://api.quran.com:443/v4/chapters/${surah}`).then(r=>r.json()).then(d=>{
+    totalAyahs = d.chapter.verses_count;
+    loadAyah();
+  });
+});
+
+document.getElementById("reciterSelect").addEventListener("change", e => {
+  reciterId = parseInt(e.target.value);
+  loadAyah();
+});
+
+document.getElementById("speedSelect").addEventListener("change", e => {
+  document.getElementById("player").playbackRate = parseFloat(e.target.value);
+});
+
+loadSurahs();
+loadReciters();
+fetch(`https://api.quran.com:443/v4/chapters/${surah}`).then(r=>r.json()).then(d=>{
+  totalAyahs = d.chapter.verses_count;
+  loadAyah();
+});
+</script>
+
+</body>
+</html>
